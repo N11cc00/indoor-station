@@ -1,0 +1,9 @@
+*.json
+*.csv
+*.code-workspace
+
+.env
+
+bin/
+.vscode/
+
