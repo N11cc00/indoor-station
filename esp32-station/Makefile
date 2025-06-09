@@ -1,3 +1,5 @@
+include .env
+
 BOARD ?= esp32s3-devkit
 RIOTBASE ?= /home/nico/dev/riot
 APPLICATION = sensor-station
@@ -47,12 +49,12 @@ USEMODULE += iolist
 CFLAGS += -DDEVELHELP
 
 # for WiFi access
-CFLAGS += -DWIFI_SSID=\"FSR\"
-CFLAGS += -DWIFI_PASS=\"rXBAewceP7\"
+CFLAGS += -DWIFI_SSID=\"${WIFI_SSID}\"
+CFLAGS += -DWIFI_PASS=\"${WIFI_PASS}\"
 CFLAGS += -DCONFIG_AUTO_INIT_SOCK_DNS_SERVER_ADDR=\"1.1.1.1\"
 
 # for API access to the endpoint
-CFLAGS += -DAPI_KEY=\"\"
+CFLAGS += -DAPI_TOKEN=\"${API_TOKEN}\"
 
 CFLAGS += -DPCF857X_PARAM_ADDR=0x07
 

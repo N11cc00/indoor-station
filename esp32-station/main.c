@@ -4,6 +4,7 @@
 #include <periph/i2c.h>
 #include <ztimer.h>
 #include <dht.h>
+#include <math.h>
 
 #include "esp_wifi.h"
 #include "net/sock/tcp.h"
@@ -17,8 +18,9 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 #define dht22_gpio GPIO_PIN(1, 2)
 
 #define SERVER_PORT 5000
-#define BUFFER_SIZE 512
+#define BUFFER_SIZE 1024
 #define SERVER_HOST "nico-behrens.de"
+#define SERVER_IPv4 "104.248.255.107"
 
 /* void scan_i2c_devices(void) {
     uint8_t address;
@@ -46,6 +48,21 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity) {
     }
 }
 
+static uint8_t get_digit_count(int16_t value) {
+    if (value < 0) {
+        value = -value; // Make it positive for digit count
+    }
+    if (value == 0) {
+        return 1; // Special case for zero
+    }
+    uint8_t count = 0;
+    while (value > 0) {
+        value /= 10;
+        count++;
+    }
+    return count;
+}
+
 int32_t read_light_value(void) {
     int32_t value = adc_sample(light_sensor_gpio, ADC_RES_10BIT);
     return value;
@@ -53,18 +70,25 @@ int32_t read_light_value(void) {
 
 static void construct_http_request(int16_t temperature, int16_t humidity, char *http_request) {
     // Construct an HTTP POST request that contains the temperature and humidity data
+    // get number of digits in temperature and humidity
+    uint8_t temperature_digits = get_digit_count(temperature);
+    uint8_t humidity_digits = get_digit_count(humidity);
+
     snprintf(http_request, BUFFER_SIZE,
-             "POST / HTTP/1.1\r\n"
+             "POST /sensor HTTP/1.1\r\n"
              "Host: %s\r\n"
-             "Content-Type: application/x-www-form-urlencoded\r\n"
+             "Content-Type: application/json\r\n"
              "Content-Length: %u\r\n"
+             "Authorization: Bearer %s\r\n"
              "\r\n"
-             "temperature=%d&humidity=%d",
+             "{\"temperature\":%d,\"humidity\":%d}", // this must be in json format
 
              SERVER_HOST,
-             strlen("temperature=") + strlen("humidity=") + 20, // 20 for the numbers
+             strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":}") + temperature_digits + humidity_digits, // 20 for the numbers
+             API_TOKEN,
              temperature,
              humidity); 
+
     // printf("Constructed HTTP request:\n%s\n", http_request);
 }
 
@@ -79,7 +103,7 @@ static void send_http_request(char *http_request)
 
     ipv4_addr_t ip;
     
-    ipv4_addr_from_str(&ip, "104.248.255.107");  // or your server IP
+    ipv4_addr_from_str(&ip, SERVER_IPv4);  // or your server IP
     /* if (p_error == NULL) {
         printf("Error: Invalid IP address\n");
         return;
@@ -114,7 +138,7 @@ static void send_http_request(char *http_request)
         return;
     }
 
-    printf("Sent HTTP GET request:\n%s\n", http_request);
+    // printf("Sent HTTP GET request:\n%s\n", http_request);
 
     /* Receive and print response */
     while ((res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT)) > 0) {
@@ -128,7 +152,7 @@ static void send_http_request(char *http_request)
 
     /* Disconnect */
     sock_tcp_disconnect(&sock);
-    printf("\nConnection closed\n");
+    printf("Connection closed\n\n");
 }
 
 int main(void) {
@@ -175,7 +199,7 @@ int main(void) {
         construct_http_request(temperature, humidity, http_request);
         send_http_request(http_request);
 
-        ztimer_sleep(ZTIMER_SEC, 3);
+        ztimer_sleep(ZTIMER_SEC, 60);
     }
     return 0;
 }
