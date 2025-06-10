@@ -13,10 +13,6 @@ CSV_HEADER = ["timestamp", "temperature", "humidity"]
 # Define the timezone (e.g., 'US/Pacific', 'Europe/London', 'Asia/Kolkata')
 timezone = pytz.timezone('Europe/Berlin')
 
-csv_file = open('data.csv', 'a+',  newline='')
-csv_writer = csv.writer(csv_file)
-csv_reader = csv.reader(csv_file)
-
 load_dotenv()
 VALID_API_TOKEN = os.environ.get("API_TOKEN")
 
@@ -46,8 +42,8 @@ def require_api_token(f):
 @app.route('/sensor', methods=["GET"])
 def get_sensor_data():
     try:
-        with open('data.csv', 'r', newline='') as f:
-            reader = csv.reader(f)
+        with open('data.csv', 'r', newline='') as csv_file:
+            reader = csv.reader(csv_file)
             last_row = None
             for row in reader:
                 if row:
@@ -64,7 +60,8 @@ def get_sensor_data():
 @require_api_token
 def add_sensor_data():
     try:
-        with open('data.csv', 'a', newline=''):
+        with open('data.csv', 'a', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
             # Get current time in the specified timezone
             current_time = datetime.now(timezone)
 
