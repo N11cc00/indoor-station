@@ -45,18 +45,20 @@ USEMODULE += iolist
 
 CFLAGS += -DDEVELHELP
 
+### SHELL VARIABLES
 # for WiFi access
 CFLAGS += -DWIFI_SSID=\"${WIFI_SSID}\"
 CFLAGS += -DWIFI_PASS=\"${WIFI_PASS}\"
-CFLAGS += -DCONFIG_AUTO_INIT_SOCK_DNS_SERVER_ADDR=\"1.1.1.1\"
+# CFLAGS += -DCONFIG_AUTO_INIT_SOCK_DNS_SERVER_ADDR=\"1.1.1.1\"
 
 # for API access to the endpoint
 CFLAGS += -DAPI_TOKEN=\"${API_TOKEN}\"
+CFLAGS += -DSERVER_IP=\"${SERVER_IP}\"
+CFLAGS += -DSERVER_PORT=${SERVER_PORT}
 
-CFLAGS += -DPCF857X_PARAM_ADDR=0x07
+# for sensor interval
+CFLAGS += -DINTERVAL=${INTERVAL}
 
-# don't treat unused variables/functions as errors
-CFLAGS += -Wno-unused-variable
-CFLAGS += -Wno-unused-function
+# CFLAGS += -DPCF857X_PARAM_ADDR=0x07
 
 include $(RIOTBASE)/Makefile.include

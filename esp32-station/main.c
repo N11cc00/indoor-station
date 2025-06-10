@@ -17,10 +17,7 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 #define light_sensor_gpio ADC_LINE(0)
 #define dht22_gpio GPIO_PIN(0, 41)
 
-#define SERVER_PORT 5000
 #define BUFFER_SIZE 1024
-#define SERVER_HOST "nico-behrens.de"
-#define SERVER_IPv4 "104.248.255.107"
 
 /* void scan_i2c_devices(void) {
     uint8_t address;
@@ -85,14 +82,14 @@ static void construct_http_request(int16_t temperature, int16_t humidity, char *
 
     snprintf(http_request, BUFFER_SIZE,
              "POST /sensor HTTP/1.1\r\n"
-             "Host: %s\r\n"
+             // "Host: %s\r\n"
              "Content-Type: application/json\r\n"
              "Content-Length: %u\r\n"
              "Authorization: Bearer %s\r\n"
              "\r\n"
              "{\"temperature\":%d,\"humidity\":%d}", // this must be in json format
 
-             SERVER_HOST,
+             // SERVER_HOST,
              strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":}") + temperature_digits + humidity_digits, // 20 for the numbers
              API_TOKEN,
              temperature,
@@ -112,7 +109,7 @@ static void send_http_request(char *http_request)
 
     ipv4_addr_t ip;
     
-    ipv4_addr_from_str(&ip, SERVER_IPv4);  // or your server IP
+    ipv4_addr_from_str(&ip, SERVER_IP);  // or your server IP
     /* if (p_error == NULL) {
         printf("Error: Invalid IP address\n");
         return;
@@ -137,7 +134,7 @@ static void send_http_request(char *http_request)
         return;
     }
 
-    LOG_INFO("Connected to %s:%d\n", SERVER_HOST, SERVER_PORT);
+    LOG_INFO("Connected to %s:%d\n", SERVER_IP, SERVER_PORT);
 
     /* Send HTTP GET request */
     res = sock_tcp_write(&sock, http_request, strlen(http_request));
@@ -211,7 +208,7 @@ int main(void) {
         construct_http_request(temperature, humidity, http_request);
         send_http_request(http_request);
 
-        ztimer_sleep(ZTIMER_SEC, 10);
+        ztimer_sleep(ZTIMER_SEC, INTERVAL);
     }
     return 0;
 }
