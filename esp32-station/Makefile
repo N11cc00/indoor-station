@@ -22,9 +22,6 @@ USEMODULE += pcf8574
 ### ESP32 WiFi
 USEMODULE += esp_wifi
 
-# USEMODULE += sock_dns
-# USEMODULE += auto_init_sock_dns
-
 CFLAGS += -DSOCK_HAS_IPV4=1
 CFLAGS += -DCONFIG_AUTO_INIT_SOCK_DNS_SERVER_ADDR=\"1.1.1.1\"
 
@@ -57,5 +54,9 @@ CFLAGS += -DCONFIG_AUTO_INIT_SOCK_DNS_SERVER_ADDR=\"1.1.1.1\"
 CFLAGS += -DAPI_TOKEN=\"${API_TOKEN}\"
 
 CFLAGS += -DPCF857X_PARAM_ADDR=0x07
+
+# don't treat unused variables/functions as errors
+CFLAGS += -Wno-unused-variable
+CFLAGS += -Wno-unused-function
 
 include $(RIOTBASE)/Makefile.include

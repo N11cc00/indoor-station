@@ -15,7 +15,7 @@
 static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 #define light_sensor_gpio ADC_LINE(0)
-#define dht22_gpio GPIO_PIN(1, 2)
+#define dht22_gpio GPIO_PIN(0, 41)
 
 #define SERVER_PORT 5000
 #define BUFFER_SIZE 1024
@@ -42,10 +42,19 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 } */
 
 void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity) {
-    int res = dht_read(dev, temperature, humidity);
-    if (res != DHT_OK) {
-        printf("DHT read failed: %d\n", res);
-    }
+    uint8_t retries = 3;
+    int res;
+    do {
+        res = dht_read(dev, temperature, humidity);
+        if (res != DHT_OK) {
+            LOG_WARNING("DHT read failed: %d\n", res);
+        }
+
+        if (res == DHT_OK) {
+            return; // Successfully read the values
+        }
+    } while (retries-- > 0);
+    LOG_ERROR("Failed to read DHT sensor after retries\n");
 }
 
 static uint8_t get_digit_count(int16_t value) {
@@ -124,16 +133,16 @@ static void send_http_request(char *http_request)
  
     /* Connect to the server */
     if ((error = sock_tcp_connect(&sock, &remote, 0, 0)) < 0) {
-        printf("Error: Cannot connect to endpoint, %d\n", error);
+        LOG_ERROR("Cannot connect to endpoint, %d\n", error);
         return;
     }
 
-    printf("Connected to %s:%d\n", SERVER_HOST, SERVER_PORT);
+    LOG_INFO("Connected to %s:%d\n", SERVER_HOST, SERVER_PORT);
 
     /* Send HTTP GET request */
     res = sock_tcp_write(&sock, http_request, strlen(http_request));
     if (res < 0) {
-        printf("Error: Cannot send HTTP request (%d)\n", (int)res);
+        LOG_ERROR("Cannot send HTTP request (%d)\n", (int)res);
         sock_tcp_disconnect(&sock);
         return;
     }
@@ -147,29 +156,29 @@ static void send_http_request(char *http_request)
     }
 
     if (res < 0) {
-        printf("Error: Cannot read response (%d)\n", (int)res);
+        LOG_ERROR("Cannot read response (%d)\n", (int)res);
     }
 
     /* Disconnect */
     sock_tcp_disconnect(&sock);
-    printf("Connection closed\n\n");
+    LOG_INFO("Connection closed\n\n");
 }
 
 int main(void) {
     /* Initialize message queue */
     static char http_request[1024];
 
-    ztimer_sleep(ZTIMER_SEC, 1); // Wait for system to stabilize
+    ztimer_sleep(ZTIMER_SEC, 10); // Wait for system to stabilize
 
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
 
     // i2c_init(I2C_BUS);
     // scan_i2c_devices();
     
-    if (adc_init(ADC_LINE(0)) < 0) {
+/*     if (adc_init(ADC_LINE(0)) < 0) {
         printf("ADC initialization failed\n");
         return 1;
-    }
+    } */
 
     dht_params_t dht22_params = {
         .pin = dht22_gpio,
@@ -180,26 +189,29 @@ int main(void) {
     dht_t dht22_dev;
 
     int error = dht_init(&dht22_dev, &dht22_params);
-    printf("DHT init error: %d\n", error);
+    if (error < 0) {
+        LOG_ERROR("DHT init error: %d\n", error);
+        return 1;
+    }
 
     while (1) {
         // Read the analog value from the A0 pin
-        int light = read_light_value();
-        if (light < 0) {
+        // int light = read_light_value();
+/*         if (light < 0) {
             printf("ADC read failed\n");
         } else {
             printf("Light value: %d\n", light);
             // show_number_dec(light, false, 4, 0);
-        }
+        } */
 
         int16_t humidity, temperature;
         read_dht_value(&dht22_dev, &temperature, &humidity);
-        printf("Humidity: %hd%%, Temperature: %hd°C\n", humidity/10, temperature/10);
+        LOG_INFO("Humidity: %hd%%, Temperature: %hd°C\n", humidity/10, temperature/10);
 
         construct_http_request(temperature, humidity, http_request);
         send_http_request(http_request);
 
-        ztimer_sleep(ZTIMER_SEC, 60);
+        ztimer_sleep(ZTIMER_SEC, 10);
     }
     return 0;
 }
