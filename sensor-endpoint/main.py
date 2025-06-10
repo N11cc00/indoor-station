@@ -39,17 +39,46 @@ def require_api_token(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def get_last_n_rows_from_csv(file_path, n):
+    """Helper function to get the last n rows from a CSV file."""
+    with open(file_path, 'r', newline='') as csv_file:
+        reader = csv.reader(csv_file)
+        rows = list(reader)
+        return rows[-n:] if len(rows) >= n else rows
+    
+def get_rows_between_timestamps(file_path, from_timestamp, to_timestamp):
+    """Helper function to get rows between two timestamps."""
+    with open(file_path, 'r', newline='') as csv_file:
+        reader = csv.reader(csv_file)
+        rows = [row for row in reader if from_timestamp <= row[0] <= to_timestamp]
+        return rows
+
 @app.route('/sensor', methods=["GET"])
 def get_sensor_data():
     try:
-        with open('data.csv', 'r', newline='') as csv_file:
-            reader = csv.reader(csv_file)
-            last_row = None
-            for row in reader:
-                if row:
-                    last_row = row
-            if last_row:
-                data = {"timestamp": last_row[0], "temperature": last_row[1], "humidity": last_row[2]}
+        number_of_rows = Flask.request.args.get('rows', default=1, type=int) # counts from the end
+
+        from_timestamp = Flask.request.args.get('from', default=None, type=str)
+        to_timestamp = Flask.request.args.get('to', default=None, type=str)
+
+        if from_timestamp and to_timestamp:
+            from_timestamp = datetime.strptime(from_timestamp, '%Y-%m-%d %H:%M:%S %z')
+            to_timestamp = datetime.strptime(to_timestamp, '%Y-%m-%d %H:%M:%S %z')
+            # TODO: Implement filtering by timestamp range
+            rows_in_timespan = get_rows_between_timestamps('data.csv', from_timestamp, to_timestamp)
+            if rows_in_timespan:
+                data = [{"timestamp": row[0], "temperature": row[1], "humidity": row[2]} for row in rows_in_timespan]
+                return jsonify(data), 200
+            else:
+                return jsonify({"error": "No data found in the specified time range"}), 404
+        else:
+            if number_of_rows < 1:
+                return jsonify({"error": "Invalid number of rows requested"}), 400
+            
+            last_n_rows = get_last_n_rows_from_csv('data.csv', number_of_rows)
+            
+            if last_n_rows:
+                data = [{"timestamp": row[0], "temperature": row[1], "humidity": row[2]} for row in last_n_rows] 
                 return jsonify(data), 200
             else:
                 return jsonify({"error": "No data found"}), 404
