@@ -109,4 +109,4 @@ def add_sensor_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-app.run()
+app.run(host='0.0.0.0')
