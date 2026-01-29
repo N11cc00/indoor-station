@@ -43,12 +43,12 @@ def check_password():
     st.title("🔐 Indoor Station Dashboard Login")
     st.markdown("Please enter the dashboard password to continue.")
     
-    # Password input
-    password = st.text_input("Password", type="password", key="password_input")
-    
-    col1, col2, col3 = st.columns([1, 1, 2])
-    with col1:
-        if st.button("Login", type="primary"):
+    # Create a form that submits on Enter
+    with st.form(key="login_form"):
+        password = st.text_input("Password", type="password", key="password_input")
+        submit = st.form_submit_button("Login", type="primary")
+        
+        if submit:
             if password == DASHBOARD_PASSWORD:
                 st.session_state.authenticated = True
                 st.success("✅ Login successful!")
@@ -57,8 +57,8 @@ def check_password():
                 st.error("❌ Incorrect password")
     
     # Instructions
-    st.markdown("---")
-    st.info("💡 Set custom password via `.env` file: `DASHBOARD_PASSWORD=your_password`")
+    # st.markdown("---")
+    # st.info("💡 Set custom password via `.env` file: `DASHBOARD_PASSWORD=your_password`")
     
     return False
 
