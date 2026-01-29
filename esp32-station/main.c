@@ -128,21 +128,21 @@ static void construct_http_request(int16_t temperature, int16_t humidity, int32_
 
     snprintf(http_request, BUFFER_SIZE,
              "POST /sensor HTTP/1.1\r\n"
-             // "Host: %s\r\n"
+             "Host: %s\r\n"
              "Content-Type: application/json\r\n"
              "Content-Length: %u\r\n"
              "Authorization: Bearer %s\r\n"
              "\r\n"
              "{\"temperature\":%d,\"humidity\":%d,\"light\":%ld}", // this must be in json format
 
-             // SERVER_HOST,
+             SERVER_IP,
              strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":") + strlen(",") + strlen("\"light\":}") + temperature_digits + humidity_digits + light_digits,
              API_TOKEN,
              temperature,
              humidity,
              light);
 
-    // printf("Constructed HTTP request:\n%s\n", http_request);
+    printf("Constructed HTTP request:\n%s\n", http_request);
 }
 
 static void send_http_request(char *http_request)
@@ -157,21 +157,10 @@ static void send_http_request(char *http_request)
     ipv4_addr_t ip;
 
     ipv4_addr_from_str(&ip, SERVER_IP); // or your server IP
-    /* if (p_error == NULL) {
-        printf("Error: Invalid IP address\n");
-        return;
-    } */
-
-    /*     ipv4_addr_t ip_dns;
-        error = sock_dns_query("google.com", &ip_dns, AF_INET); // Resolve the server hostname to an IP address
-        if (error < 0) {
-            printf("Error: DNS query failed (%d)\n", error);
-            return;
-        } */
 
     remote.addr.ipv4_u32 = (uint32_t)ip.u32.u32; // Set the IPv4 address in network byte order
 
-    char buffer[BUFFER_SIZE];
+    // static char buffer[BUFFER_SIZE];  // Made static to avoid stack overflow
     ssize_t res;
 
     /* Connect to the server */
@@ -183,7 +172,7 @@ static void send_http_request(char *http_request)
 
     LOG_INFO("Connected to %s:%d\n", SERVER_IP, SERVER_PORT);
 
-    /* Send HTTP GET request */
+    /* Send HTTP POST request */
     res = sock_tcp_write(&sock, http_request, strlen(http_request));
     if (res < 0)
     {
@@ -191,20 +180,20 @@ static void send_http_request(char *http_request)
         sock_tcp_disconnect(&sock);
         return;
     }
+    
+    LOG_INFO("Request sent successfully\n");
 
-    // printf("Sent HTTP GET request:\n%s\n", http_request);
+    // /* Receive and print response */
+    // while ((res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT)) > 0)
+    // {
+    //     buffer[res] = '\0'; /* Null-terminate the response */
+    //     printf("%s", buffer);
+    // }
 
-    /* Receive and print response */
-    while ((res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT)) > 0)
-    {
-        buffer[res] = '\0'; /* Null-terminate the response */
-        printf("%s", buffer);
-    }
-
-    if (res < 0)
-    {
-        LOG_ERROR("Cannot read response (%d)\n", (int)res);
-    }
+    // if (res < 0)
+    // {
+    //     LOG_ERROR("Cannot read response (%d)\n", (int)res);
+    // }
 
     /* Disconnect */
     sock_tcp_disconnect(&sock);
@@ -214,7 +203,7 @@ static void send_http_request(char *http_request)
 int main(void)
 {
     /* Initialize message queue */
-    static char http_request[1024];
+    static char http_request[BUFFER_SIZE];  // Made static and smaller to avoid stack overflow
 
     ztimer_sleep(ZTIMER_SEC, 10); // Wait for system to stabilize
 
