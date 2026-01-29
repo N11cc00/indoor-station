@@ -14,7 +14,8 @@
 #define MAIN_QUEUE_SIZE (8)
 static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
-#define light_sensor_gpio ADC_LINE(0)
+
+#define light_sensor_gpio ADC_LINE(0) // this corresponds to GPIO1
 #define dht22_gpio GPIO_PIN(0, 41)
 
 #define BUFFER_SIZE 1024
@@ -38,6 +39,7 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
     return;
 } */
 
+#define DHT_OK 0
 void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity) {
     uint8_t retries = 3;
     int res;
@@ -54,14 +56,16 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity) {
     LOG_ERROR("Failed to read DHT sensor after retries\n");
 }
 
-static uint8_t get_digit_count(int16_t value) {
+static uint8_t get_digit_count(int32_t value) {
+    uint8_t count = 0;
     if (value < 0) {
+        count += 1;
         value = -value; // Make it positive for digit count
     }
     if (value == 0) {
         return 1; // Special case for zero
     }
-    uint8_t count = 0;
+
     while (value > 0) {
         value /= 10;
         count++;
@@ -69,16 +73,48 @@ static uint8_t get_digit_count(int16_t value) {
     return count;
 }
 
+#define R_FIXED 6000.0        // Fixed resistor: 6kΩ (measured)
+#define V_CC 3.3              // Supply voltage
+#define ADC_MAX_12BIT 4095.0  // 12-bit ADC maximum value
+#define NUM_SAMPLES 30        // Number of samples to average
+
+#define K_CONSTANT 7100.0f
+#define Y_CONSTANT 0.4f
+
 int32_t read_light_value(void) {
-    int32_t value = adc_sample(light_sensor_gpio, ADC_RES_10BIT);
-    return value;
+    // Take multiple samples and average to reduce noise
+    uint32_t sum = 0;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        sum += adc_sample(light_sensor_gpio, ADC_RES_12BIT);
+        ztimer_sleep(ZTIMER_MSEC, 10);  // 10ms delay between samples
+    }
+    int32_t adc_value = sum / NUM_SAMPLES;
+    
+    // Convert ADC to voltage
+    float v_measured = (adc_value / ADC_MAX_12BIT) * V_CC;
+    
+    // Calculate LDR resistance using voltage divider formula
+    // Circuit: VCC -- R_fixed (6kΩ) -- ADC -- R_ldr -- GND
+    float r_ldr = R_FIXED * v_measured / (V_CC - v_measured);
+    
+    // Convert resistance to lux
+    // Calibrated from measurements: R1=2510Ω@14lux, R2=500Ω@750lux
+    // LDR behavior: Lower resistance = Brighter (higher lux)
+    // Formula: Lux = (K / R)^(1/gamma), where gamma = 0.4, K = 5635
+    float lux = pow(K_CONSTANT / r_ldr, 1.0/Y_CONSTANT);  // = pow(5635.0/r_ldr, 2.5)
+    
+    printf("ADC: %ld (avg of %d), Voltage: %.2fV, R_ldr: %.0fΩ, Lux: %.0f\n", 
+           adc_value, NUM_SAMPLES, v_measured, r_ldr, lux);
+    
+    return (int32_t)lux;
 }
 
-static void construct_http_request(int16_t temperature, int16_t humidity, char *http_request) {
-    // Construct an HTTP POST request that contains the temperature and humidity data
-    // get number of digits in temperature and humidity
+static void construct_http_request(int16_t temperature, int16_t humidity, int32_t light, char *http_request) {
+    // Construct an HTTP POST request that contains the temperature, humidity, and light data
+    // get number of digits in temperature, humidity, and light
     uint8_t temperature_digits = get_digit_count(temperature);
     uint8_t humidity_digits = get_digit_count(humidity);
+    uint8_t light_digits = get_digit_count(light);
 
     snprintf(http_request, BUFFER_SIZE,
              "POST /sensor HTTP/1.1\r\n"
@@ -87,13 +123,14 @@ static void construct_http_request(int16_t temperature, int16_t humidity, char *
              "Content-Length: %u\r\n"
              "Authorization: Bearer %s\r\n"
              "\r\n"
-             "{\"temperature\":%d,\"humidity\":%d}", // this must be in json format
+             "{\"temperature\":%d,\"humidity\":%d,\"light\":%ld}", // this must be in json format
 
              // SERVER_HOST,
-             strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":}") + temperature_digits + humidity_digits, // 20 for the numbers
+             strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":") + strlen(",") + strlen("\"light\":}") + temperature_digits + humidity_digits + light_digits,
              API_TOKEN,
              temperature,
-             humidity); 
+             humidity,
+             light); 
 
     // printf("Constructed HTTP request:\n%s\n", http_request);
 }
@@ -172,10 +209,10 @@ int main(void) {
     // i2c_init(I2C_BUS);
     // scan_i2c_devices();
     
-/*     if (adc_init(ADC_LINE(0)) < 0) {
-        printf("ADC initialization failed\n");
+    if (adc_init(ADC_LINE(0)) < 0) {
+        LOG_ERROR("ADC initialization failed\n");
         return 1;
-    } */
+    }
 
     dht_params_t dht22_params = {
         .pin = dht22_gpio,
@@ -193,19 +230,19 @@ int main(void) {
 
     while (1) {
         // Read the analog value from the A0 pin
-        // int light = read_light_value();
-/*         if (light < 0) {
-            printf("ADC read failed\n");
+        int32_t light = read_light_value();
+        if (light < 0) {
+            LOG_WARNING("ADC read failed, with %ld\n", light);
+            light = 0;  // Default to 0 if read fails
         } else {
-            printf("Light value: %d\n", light);
-            // show_number_dec(light, false, 4, 0);
-        } */
+            LOG_INFO("Light value: %ld\n", light);
+        }
 
         int16_t humidity, temperature;
         read_dht_value(&dht22_dev, &temperature, &humidity);
         LOG_INFO("Humidity: %hd%%, Temperature: %hd°C\n", humidity/10, temperature/10);
 
-        construct_http_request(temperature, humidity, http_request);
+        construct_http_request(temperature, humidity, light, http_request);
         send_http_request(http_request);
 
         ztimer_sleep(ZTIMER_SEC, INTERVAL);

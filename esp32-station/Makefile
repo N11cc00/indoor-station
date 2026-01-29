@@ -1,7 +1,7 @@
 include .env
 
 BOARD ?= esp32s3-devkit
-RIOTBASE ?= /home/nico/dev/riot
+RIOTBASE ?= /home/nico/dev/RIOT
 APPLICATION = sensor-station
 
 LWIP ?= 1
@@ -17,6 +17,8 @@ USEMODULE += ztimer_sec
 USEMODULE += dht
 USEMODULE += hd44780
 USEMODULE += pcf8574
+
+USEFEATURES += periph_adc_continuous
 
 
 ### ESP32 WiFi

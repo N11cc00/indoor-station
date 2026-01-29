@@ -24,12 +24,14 @@ class SensorData(db.Model):
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False)
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
+    light = db.Column(db.Float, nullable=True)  # Optional for backward compatibility
 
     def to_dict(self):
         return {
             "timestamp": self.timestamp.strftime('%Y-%m-%d %H:%M:%S %z %Z'),
             "temperature": self.temperature,
-            "humidity": self.humidity
+            "humidity": self.humidity,
+            "light": self.light
         }
 
 with app.app_context():
@@ -71,6 +73,7 @@ def require_api_token(f):
 #         return rows
 
 @app.route('/sensor', methods=["GET"])
+@require_api_token
 def get_sensor_data():
     try:
         from_timestamp = request.args.get('from', default=None, type=str)
@@ -108,7 +111,8 @@ def add_sensor_data():
         new_entry = SensorData(
             timestamp=current_time,
             temperature=float(sensor_data["temperature"]),
-            humidity=float(sensor_data["humidity"])
+            humidity=float(sensor_data["humidity"]),
+            light=float(sensor_data.get("light")) if sensor_data.get("light") is not None else None
         )
 
         db.session.add(new_entry)
