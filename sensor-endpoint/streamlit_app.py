@@ -22,11 +22,11 @@ st.set_page_config(
 timezone = pytz.timezone('Europe/Berlin')
 
 # API Configuration
-API_URL = "http://localhost:5000/sensor"
+API_URL = "http://localhost:6666/sensor"
 API_TOKEN = os.environ.get("API_TOKEN")  # Read API token from .env
 
 # Password Configuration
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")  # Default password
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")  # Default password
 
 def check_password():
     """Returns True if the user has entered the correct password."""

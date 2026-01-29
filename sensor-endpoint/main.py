@@ -12,6 +12,7 @@ timezone = pytz.timezone('Europe/Berlin')
 
 load_dotenv()
 VALID_API_TOKEN = os.environ.get("API_TOKEN")
+API_PORT = os.environ.get("API_PORT")
 
 app = Flask("sensor_endpoint")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sensor_data.db'
@@ -24,7 +25,7 @@ class SensorData(db.Model):
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False)
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
-    light = db.Column(db.Float, nullable=True)  # Optional for backward compatibility
+    light = db.Column(db.Float, nullable=False) 
 
     def to_dict(self):
         return {
@@ -112,7 +113,7 @@ def add_sensor_data():
             timestamp=current_time,
             temperature=float(sensor_data["temperature"]),
             humidity=float(sensor_data["humidity"]),
-            light=float(sensor_data.get("light")) if sensor_data.get("light") is not None else None
+            light=float(sensor_data["light"])
         )
 
         db.session.add(new_entry)
@@ -124,4 +125,4 @@ def add_sensor_data():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0')
+    app.run(host='0.0.0.0', port=API_PORT)
