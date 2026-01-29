@@ -80,6 +80,9 @@ def fetch_sensor_data(from_time, to_time):
             if data:
                 df = pd.DataFrame(data)
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
+                # Convert temperature and humidity by dividing by 10
+                df['temperature'] = df['temperature'] / 10.0
+                df['humidity'] = df['humidity'] / 10.0
                 df = df.sort_values('timestamp')
                 return df
             else:
