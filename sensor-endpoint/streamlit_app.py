@@ -186,8 +186,8 @@ else:
     with col3:
         st.metric(
             label="💡 Current Light",
-            value=f"{latest['light']:.0f} lux",
-            delta=f"{latest['light'] - df.iloc[-2]['light']:.0f}" if len(df) > 1 else None
+            value=f"{latest['lux']:.0f} lux",
+            delta=f"{latest['lux'] - df.iloc[-2]['lux']:.0f}" if len(df) > 1 else None
         )
     
     with col4:
@@ -258,7 +258,7 @@ else:
     fig_light = go.Figure()
     fig_light.add_trace(go.Scatter(
         x=df['timestamp'],
-        y=df['light'],
+        y=df['lux'],
         mode='lines+markers',
         name='Light',
         line=dict(color='#FFD93D', width=2),
@@ -276,6 +276,30 @@ else:
     )
     
     st.plotly_chart(fig_light, use_container_width=True)
+
+    # Raw Light Chart
+    st.subheader("🔆 Raw Light Sensor Values")
+    fig_raw_light = go.Figure()
+    fig_raw_light.add_trace(go.Scatter(
+        x=df['timestamp'],
+        y=df['raw_light'],
+        mode='lines+markers',
+        name='Raw Light',
+        line=dict(color='#FFA500', width=2),
+        marker=dict(size=4),
+        fill='tozeroy',
+        fillcolor='rgba(255, 165, 0, 0.1)'
+    ))
+    
+    fig_raw_light.update_layout(
+        xaxis_title="Time",
+        yaxis_title="Raw Light Value (ADC)",
+        hovermode='x unified',
+        height=400,
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig_raw_light, use_container_width=True)
     
     # Combined Chart
     st.subheader("📈 Combined View")
@@ -347,10 +371,10 @@ else:
         light_stats = pd.DataFrame({
             'Metric': ['Average', 'Minimum', 'Maximum', 'Std Dev'],
             'Value': [
-                f"{df['light'].mean():.0f}",
-                f"{df['light'].min():.0f}",
-                f"{df['light'].max():.0f}",
-                f"{df['light'].std():.0f}"
+                f"{df['lux'].mean():.0f}",
+                f"{df['lux'].min():.0f}",
+                f"{df['lux'].max():.0f}",
+                f"{df['lux'].std():.0f}"
             ]
         })
         st.dataframe(light_stats, hide_index=True, use_container_width=True)

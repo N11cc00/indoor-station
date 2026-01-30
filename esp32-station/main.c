@@ -19,7 +19,8 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 #define BUFFER_SIZE 1024
 
-typedef struct {
+typedef struct
+{
     int32_t lux;
     int32_t raw;
 } light_values_t;
@@ -43,9 +44,8 @@ typedef struct {
     return;
 } */
 
-#define MAXIMUM_TEMPERATURE       60U*10U  // equates to 60 degrees celsius
-#define MAXIMUM_HUMIDITY          110U*10U // equtes to 110% humidity
-
+#define MAXIMUM_TEMPERATURE 60 * 10 // equates to 60 degrees celsius
+#define MAXIMUM_HUMIDITY 110 * 10   // equtes to 110% humidity
 
 #define DHT_OK 0
 void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
@@ -56,11 +56,16 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
     {
         res = dht_read(dev, temperature, humidity);
 
-        if (res != DHT_OK) {
+        if (res != DHT_OK)
+        {
             LOG_WARNING("DHT read failed: %d\n", res);
-        } else if (temperature > MAXIMUM_TEMPERATURE || humidity > MAXIMUM_HUMIDITY) {
+        }
+        else if (*temperature > MAXIMUM_TEMPERATURE || *humidity > MAXIMUM_HUMIDITY)
+        {
             LOG_WARNING("Unusually high DHT values.");
-        } else if (res == DHT_OK) {
+        }
+        else if (res == DHT_OK)
+        {
             return; // Successfully read the values
         }
     } while (retries-- > 0);
@@ -96,7 +101,7 @@ static uint8_t get_digit_count(int32_t value)
 #define K_CONSTANT 22705.0f
 #define Y_CONSTANT 0.57f
 
-int32_t read_light_value(void)
+void read_light_value(light_values_t *light_values)
 {
     // Take multiple samples and average to reduce noise
     uint32_t sum = 0;
@@ -106,7 +111,7 @@ int32_t read_light_value(void)
         ztimer_sleep(ZTIMER_MSEC, 10); // 10ms delay between samples
     }
     int32_t adc_value = sum / NUM_SAMPLES;
-    int32_t inverted_adc_value = ((int32_t) ADC_MAX_12BIT) - adc_value;
+    int32_t inverted_adc_value = ((int32_t)ADC_MAX_12BIT) - adc_value; // we invert this here so: low = dark and high = bright
 
     // Convert ADC to voltage
     float v_measured = (adc_value / ADC_MAX_12BIT) * V_CC;
@@ -124,16 +129,18 @@ int32_t read_light_value(void)
     printf("ADC: %ld (avg of %d), Voltage: %.2fV, R_ldr: %.0fΩ, Lux: %.0f\n",
            adc_value, NUM_SAMPLES, v_measured, r_ldr, lux);
 
-    return (int32_t)lux;
+    light_values->lux = (int32_t)lux;
+    light_values->raw = inverted_adc_value;
 }
 
-static void construct_http_request(int16_t temperature, int16_t humidity, int32_t light, char *http_request)
+static void construct_http_request(int16_t temperature, int16_t humidity, int32_t lux, int32_t raw_light, char *http_request)
 {
     // Construct an HTTP POST request that contains the temperature, humidity, and light data
     // get number of digits in temperature, humidity, and light
     uint8_t temperature_digits = get_digit_count(temperature);
     uint8_t humidity_digits = get_digit_count(humidity);
-    uint8_t light_digits = get_digit_count(light);
+    uint8_t lux_digits = get_digit_count(lux);
+    uint8_t raw_light_digits = get_digit_count(raw_light);
 
     snprintf(http_request, BUFFER_SIZE,
              "POST /sensor HTTP/1.1\r\n"
@@ -142,14 +149,16 @@ static void construct_http_request(int16_t temperature, int16_t humidity, int32_
              "Content-Length: %u\r\n"
              "Authorization: Bearer %s\r\n"
              "\r\n"
-             "{\"temperature\":%d,\"humidity\":%d,\"light\":%ld}", // this must be in json format
+             "{\"temperature\":%d,\"humidity\":%d,\"lux\":%ld,\"raw_light\":%ld}", // this must be in json format
 
              SERVER_IP,
-             strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":") + strlen(",") + strlen("\"light\":}") + temperature_digits + humidity_digits + light_digits,
+             strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":") + strlen(",") + strlen("\"lux\":") + strlen(",") + strlen("\"raw_light\":}") + temperature_digits + humidity_digits + lux_digits + raw_light_digits,
+
              API_TOKEN,
              temperature,
              humidity,
-             light);
+             lux,
+             raw_light);
 
     printf("Constructed HTTP request:\n%s\n", http_request);
 }
@@ -189,7 +198,7 @@ static void send_http_request(char *http_request)
         sock_tcp_disconnect(&sock);
         return;
     }
-    
+
     LOG_INFO("Request sent successfully\n");
 
     // /* Receive and print response */
@@ -212,7 +221,7 @@ static void send_http_request(char *http_request)
 int main(void)
 {
     /* Initialize message queue */
-    static char http_request[BUFFER_SIZE];  // Made static and smaller to avoid stack overflow
+    static char http_request[BUFFER_SIZE]; // Made static and smaller to avoid stack overflow
 
     ztimer_sleep(ZTIMER_SEC, 10); // Wait for system to stabilize
 
@@ -243,23 +252,25 @@ int main(void)
 
     while (1)
     {
+        light_values_t light_values;
         // Read the analog value from the A0 pin
-        int32_t light = read_light_value();
-        if (light < 0)
+        read_light_value(&light_values);
+        if (light_values.lux < 0 || light_values.raw < 0)
         {
-            LOG_WARNING("ADC read failed, with %ld\n", light);
-            light = 0; // Default to 0 if read fails
+            LOG_WARNING("ADC read failed");
+            light_values.lux = 0;
+            light_values.raw = 0;
         }
         else
         {
-            LOG_INFO("Light value: %ld\n", light);
+            LOG_INFO("Lux value: %ld, Raw value: %ld\n", light_values.lux, light_values.raw);
         }
 
         int16_t humidity, temperature;
         read_dht_value(&dht22_dev, &temperature, &humidity);
         LOG_INFO("Humidity: %hd%%, Temperature: %hd°C\n", humidity / 10, temperature / 10);
 
-        construct_http_request(temperature, humidity, light, http_request);
+        construct_http_request(temperature, humidity, light_values.lux, light_values.raw, http_request);
         send_http_request(http_request);
 
         ztimer_sleep(ZTIMER_SEC, INTERVAL);

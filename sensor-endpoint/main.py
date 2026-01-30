@@ -25,14 +25,16 @@ class SensorData(db.Model):
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False)
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
-    light = db.Column(db.Float, nullable=False) 
+    lux = db.Column(db.Float, nullable=False)
+    raw_light = db.Column(db.Float, nullable=False)
 
     def to_dict(self):
         return {
             "timestamp": self.timestamp.strftime('%Y-%m-%d %H:%M:%S %z %Z'),
             "temperature": self.temperature,
             "humidity": self.humidity,
-            "light": self.light
+            "lux": self.lux,
+            "raw_light": self.raw_light
         }
 
 with app.app_context():
@@ -113,7 +115,8 @@ def add_sensor_data():
             timestamp=current_time,
             temperature=float(sensor_data["temperature"]),
             humidity=float(sensor_data["humidity"]),
-            light=float(sensor_data["light"])
+            lux=float(sensor_data["lux"]),
+            raw_light=float(sensor_data["raw_light"]),
         )
 
         db.session.add(new_entry)
