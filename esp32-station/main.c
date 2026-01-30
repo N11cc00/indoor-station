@@ -19,6 +19,11 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 #define BUFFER_SIZE 1024
 
+typedef struct {
+    int32_t lux;
+    int32_t raw;
+} light_values_t;
+
 /* void scan_i2c_devices(void) {
     uint8_t address;
     int res;
@@ -53,10 +58,8 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
 
         if (res != DHT_OK) {
             LOG_WARNING("DHT read failed: %d\n", res);
-        }
-
-        if (temperature > MAXIMUM_TEMPERATURE || humidity > MAXIMUM_HUMIDITY) {
-            LOG_WARNING("Unusually high DHT values, trying again.");
+        } else if (temperature > MAXIMUM_TEMPERATURE || humidity > MAXIMUM_HUMIDITY) {
+            LOG_WARNING("Unusually high DHT values.");
         } else if (res == DHT_OK) {
             return; // Successfully read the values
         }
@@ -103,6 +106,7 @@ int32_t read_light_value(void)
         ztimer_sleep(ZTIMER_MSEC, 10); // 10ms delay between samples
     }
     int32_t adc_value = sum / NUM_SAMPLES;
+    int32_t inverted_adc_value = ((int32_t) ADC_MAX_12BIT) - adc_value;
 
     // Convert ADC to voltage
     float v_measured = (adc_value / ADC_MAX_12BIT) * V_CC;
