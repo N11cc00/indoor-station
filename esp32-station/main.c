@@ -38,6 +38,10 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
     return;
 } */
 
+#define MAXIMUM_TEMPERATURE       60U*10U  // equates to 60 degrees celsius
+#define MAXIMUM_HUMIDITY          110U*10U // equtes to 110% humidity
+
+
 #define DHT_OK 0
 void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
 {
@@ -46,13 +50,14 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
     do
     {
         res = dht_read(dev, temperature, humidity);
-        if (res != DHT_OK)
-        {
+
+        if (res != DHT_OK) {
             LOG_WARNING("DHT read failed: %d\n", res);
         }
 
-        if (res == DHT_OK)
-        {
+        if (temperature > MAXIMUM_TEMPERATURE || humidity > MAXIMUM_HUMIDITY) {
+            LOG_WARNING("Unusually high DHT values, trying again.");
+        } else if (res == DHT_OK) {
             return; // Successfully read the values
         }
     } while (retries-- > 0);
