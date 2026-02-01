@@ -6,6 +6,7 @@ import pytz
 from dotenv import load_dotenv
 import os
 from flask_sqlalchemy import SQLAlchemy
+import logging
 
 # Define the timezone (e.g., 'US/Pacific', 'Europe/London', 'Asia/Kolkata')
 timezone = pytz.timezone('Europe/Berlin')
@@ -18,6 +19,17 @@ app = Flask("sensor_endpoint")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sensor_data.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('sensor_endpoint.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Define the SensorData model
 class SensorData(db.Model):
@@ -81,11 +93,14 @@ def get_sensor_data():
     try:
         from_timestamp = request.args.get('from', default=None, type=str)
         to_timestamp = request.args.get('to', default=None, type=str)
+        
+        logger.info(f"GET request received - from: {from_timestamp}, to: {to_timestamp}, IP: {request.remote_addr}")
 
         try:
             from_timestamp = datetime.strptime(from_timestamp, '%Y-%m-%d %H:%M:%S %z')
             to_timestamp = datetime.strptime(to_timestamp, '%Y-%m-%d %H:%M:%S %z')
         except ValueError:
+            logger.warning(f"Invalid timestamp format received from {request.remote_addr}")
             return jsonify({"error": "Invalid timestamp format. Use YYYY-MM-DD HH:MM:SS +ZZZZ"}), 400
 
         rows = SensorData.query.filter(
@@ -95,10 +110,13 @@ def get_sensor_data():
 
         if rows:
             data = [row.to_dict() for row in rows]
+            logger.info(f"Returning {len(data)} records to {request.remote_addr}")
             return jsonify(data), 200
         else:
+            logger.info(f"No data found for time range requested by {request.remote_addr}")
             return jsonify({"error": "No data found in the specified time range"}), 404
     except Exception as e:
+        logger.error(f"Error processing GET request from {request.remote_addr}: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/sensor", methods=["POST"])
@@ -106,8 +124,11 @@ def get_sensor_data():
 def add_sensor_data():
     try:
         sensor_data = json.loads(request.data)
+        
+        logger.info(f"POST request received from {request.remote_addr}")
 
-        if "temperature" not in sensor_data or "humidity" not in sensor_data:
+        if "temperature" not in sensor_data or "humidity" not in sensor_data or "lux" not in sensor_data or "raw_light" not in sensor_data:
+            logger.warning(f"Invalid data received from {request.remote_addr}: missing required keys")
             return jsonify({"error": "Key missing in data"}), 400
 
         current_time = datetime.now(timezone)
@@ -121,9 +142,12 @@ def add_sensor_data():
 
         db.session.add(new_entry)
         db.session.commit()
+        
+        logger.info(f"Data added successfully from {request.remote_addr}")
 
         return jsonify(new_entry.to_dict()), 200
     except Exception as e:
+        logger.error(f"Error processing POST request from {request.remote_addr}: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
