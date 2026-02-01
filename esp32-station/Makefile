@@ -56,6 +56,7 @@ CFLAGS += -DWIFI_PASS=\"${WIFI_PASS}\"
 # for API access to the endpoint
 CFLAGS += -DAPI_TOKEN=\"${API_TOKEN}\"
 CFLAGS += -DSERVER_IP=\"${SERVER_IP}\"
+CFLAGS += -DHOST_NAME=\"${HOST_NAME}\"
 CFLAGS += -DSERVER_PORT=${SERVER_PORT}
 
 # for sensor interval

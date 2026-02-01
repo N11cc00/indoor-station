@@ -151,7 +151,7 @@ static void construct_http_request(int16_t temperature, int16_t humidity, int32_
              "\r\n"
              "{\"temperature\":%d,\"humidity\":%d,\"lux\":%ld,\"raw_light\":%ld}", // this must be in json format
 
-             SERVER_IP,
+             HOST_NAME,
              strlen("{\"temperature\":") + strlen(",") + strlen("\"humidity\":") + strlen(",") + strlen("\"lux\":") + strlen(",") + strlen("\"raw_light\":}") + temperature_digits + humidity_digits + lux_digits + raw_light_digits,
 
              API_TOKEN,
@@ -201,16 +201,24 @@ static void send_http_request(char *http_request)
 
     LOG_INFO("Request sent successfully\n");
 
-    // /* Receive and print response */
-    // while ((res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT)) > 0)
+    // /* Receive and print response - read once with timeout */
+    // res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, 1000000); // 1 second in microseconds
+    // if (res > 0)
     // {
     //     buffer[res] = '\0'; /* Null-terminate the response */
-    //     printf("%s", buffer);
+    //     printf("Response: %s\n", buffer);
     // }
-
-    // if (res < 0)
+    // else if (res == -ETIMEDOUT)
+    // {
+    //     LOG_WARNING("Response read timed out\n");
+    // }
+    // else if (res < 0)
     // {
     //     LOG_ERROR("Cannot read response (%d)\n", (int)res);
+    // }
+    // else
+    // {
+    //     LOG_INFO("No response data\n");
     // }
 
     /* Disconnect */

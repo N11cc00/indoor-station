@@ -58,16 +58,19 @@ def require_api_token(f):
         # Check for token in Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
+            logger.error(f"Missing auth token from {request.remote_addr}")
             return jsonify({"error": "Missing Authorization header"}), 401
 
         # Expecting "Bearer <token>" format
         try:
             token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else auth_header
         except IndexError:
+            logger.error(f"Invalid auth token format from {request.remote_addr}")
             return jsonify({"error": "Invalid Authorization header format"}), 401
 
         # Validate token
         if token != VALID_API_TOKEN:
+            logger.error(f"Invalid or unauthorized token {request.remote_addr}")
             return jsonify({"error": "Invalid or unauthorized token"}), 401
 
         return f(*args, **kwargs)
