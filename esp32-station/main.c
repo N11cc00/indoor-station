@@ -2,6 +2,7 @@
 #include <periph/adc.h>
 #include <periph/gpio.h>
 #include <periph/i2c.h>
+#include <periph/pm.h>
 #include <ztimer.h>
 #include <dht.h>
 #include <math.h>
@@ -16,6 +17,8 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 #define light_sensor_gpio ADC_LINE(0) // this corresponds to GPIO1
 #define dht22_gpio GPIO_PIN(0, 41)
+
+#define RESET_INTERVAL_SECONDS (60U*60U)
 
 #define BUFFER_SIZE 1024
 
@@ -178,8 +181,10 @@ static void send_http_request(char *http_request)
 
     remote.addr.ipv4_u32 = (uint32_t)ip.u32.u32; // Set the IPv4 address in network byte order
 
-    // static char buffer[BUFFER_SIZE];  // Made static to avoid stack overflow
+    // static char buffer[BUFFER_SIZE];
     ssize_t res;
+
+    LOG_INFO("Connecting to endpoint...\n");
 
     /* Connect to the server */
     if ((error = sock_tcp_connect(&sock, &remote, 0, 0)) < 0)
@@ -201,8 +206,9 @@ static void send_http_request(char *http_request)
 
     LOG_INFO("Request sent successfully\n");
 
-    // /* Receive and print response - read once with timeout */
-    // res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, 1000000); // 1 second in microseconds
+    /* Receive and print response - read once with timeout */
+    // res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT);
+    // printf("read data\n");
     // if (res > 0)
     // {
     //     buffer[res] = '\0'; /* Null-terminate the response */
@@ -258,8 +264,17 @@ int main(void)
         return 1;
     }
 
+    ztimer_now_t start_time = ztimer_now(ZTIMER_SEC);
+    LOG_INFO("Entering infinite loop\n");
     while (1)
     {
+        ztimer_now_t current_time = ztimer_now(ZTIMER_SEC);
+
+        if ((start_time - current_time) > RESET_INTERVAL_SECONDS) {
+            LOG_INFO("Resetting now with %lu seconds passed\n", (start_time - current_time));
+            pm_reboot();
+        }
+
         light_values_t light_values;
         // Read the analog value from the A0 pin
         read_light_value(&light_values);
