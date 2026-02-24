@@ -10,9 +10,10 @@
 #include "esp_wifi.h"
 #include "net/sock/tcp.h"
 #include "net/ipv4/addr.h"
+#include "lwip/api.h"
 // #include "net/sock/dns.h"
 
-#define MAIN_QUEUE_SIZE (8)
+#define MAIN_QUEUE_SIZE (32)
 static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 #define light_sensor_gpio ADC_LINE(0) // this corresponds to GPIO1
@@ -151,6 +152,7 @@ static void construct_http_request(int16_t temperature, int16_t humidity, int32_
              "Content-Type: application/json\r\n"
              "Content-Length: %u\r\n"
              "Authorization: Bearer %s\r\n"
+             "Connection: close\r\n"
              "\r\n"
              "{\"temperature\":%d,\"humidity\":%d,\"lux\":%ld,\"raw_light\":%ld}", // this must be in json format
 
@@ -206,28 +208,15 @@ static void send_http_request(char *http_request)
 
     LOG_INFO("Request sent successfully\n");
 
-    /* MUST read response to drain socket before disconnecting - prevents assertion failure */
-    char buffer[512];
-    res = sock_tcp_read(&sock, buffer, sizeof(buffer) - 1, 5000000U); // 5 sec timeout
-    if (res > 0)
-    {
-        buffer[res] = '\0'; /* Null-terminate the response */
-        printf("Response: %s\n", buffer);
+    /* Abortive close immediately. We skip reading the response because
+     * LWIP's receive mbox handling can deadlock ztimer callbacks on ESP32,
+     * causing even ztimer_sleep to hang after a TCP write. */
+    if (sock.base.conn != NULL) {
+        netconn_delete(sock.base.conn);
+        sock.base.conn = NULL;
     }
-    else if (res == -ETIMEDOUT)
-    {
-        LOG_WARNING("Response read timed out\n");
-    }
-    else if (res < 0)
-    {
-        LOG_ERROR("Cannot read response (%d)\n", (int)res);
-    }
-
-    /* Disconnect */
-    sock_tcp_disconnect(&sock);
     LOG_INFO("Connection closed\n\n");
 }
-
 int main(void)
 {
     /* Initialize message queue */
@@ -262,20 +251,20 @@ int main(void)
 
 
     /* acquire the clock so durations can be measured */
-    ztimer_acquire(ZTIMER_SEC);
+    // ztimer_acquire(ZTIMER_SEC);
 
-    ztimer_now_t start_time = ztimer_now(ZTIMER_SEC);
+    // ztimer_now_t start_time = ztimer_now(ZTIMER_SEC);
     LOG_INFO("Entering infinite loop\n");
     while (1)
     {
-        ztimer_now_t current_time = ztimer_now(ZTIMER_SEC);
+        // ztimer_now_t current_time = ztimer_now(ZTIMER_SEC);
 
-        assert(current_time >= start_time);
+        // assert(current_time >= start_time);
 
-        if ((current_time - start_time) > RESET_INTERVAL_SECONDS) {
-            LOG_INFO("Resetting now with %lu seconds passed\n", (start_time - current_time));
-            pm_reboot();
-        }
+        // if ((current_time - start_time) > RESET_INTERVAL_SECONDS) {
+        //     LOG_INFO("Resetting now with %lu seconds passed\n", (current_time - start_time));
+        //     // pm_reboot(); not used right now
+        // }
 
         light_values_t light_values;
         // Read the analog value from the A0 pin
