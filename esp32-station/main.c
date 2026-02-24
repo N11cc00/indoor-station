@@ -206,26 +206,22 @@ static void send_http_request(char *http_request)
 
     LOG_INFO("Request sent successfully\n");
 
-    /* Receive and print response - read once with timeout */
-    // res = sock_tcp_read(&sock, buffer, BUFFER_SIZE - 1, SOCK_NO_TIMEOUT);
-    // printf("read data\n");
-    // if (res > 0)
-    // {
-    //     buffer[res] = '\0'; /* Null-terminate the response */
-    //     printf("Response: %s\n", buffer);
-    // }
-    // else if (res == -ETIMEDOUT)
-    // {
-    //     LOG_WARNING("Response read timed out\n");
-    // }
-    // else if (res < 0)
-    // {
-    //     LOG_ERROR("Cannot read response (%d)\n", (int)res);
-    // }
-    // else
-    // {
-    //     LOG_INFO("No response data\n");
-    // }
+    /* MUST read response to drain socket before disconnecting - prevents assertion failure */
+    char buffer[512];
+    res = sock_tcp_read(&sock, buffer, sizeof(buffer) - 1, 5000000U); // 5 sec timeout
+    if (res > 0)
+    {
+        buffer[res] = '\0'; /* Null-terminate the response */
+        printf("Response: %s\n", buffer);
+    }
+    else if (res == -ETIMEDOUT)
+    {
+        LOG_WARNING("Response read timed out\n");
+    }
+    else if (res < 0)
+    {
+        LOG_ERROR("Cannot read response (%d)\n", (int)res);
+    }
 
     /* Disconnect */
     sock_tcp_disconnect(&sock);
@@ -264,13 +260,19 @@ int main(void)
         return 1;
     }
 
+
+    /* acquire the clock so durations can be measured */
+    ztimer_acquire(ZTIMER_SEC);
+
     ztimer_now_t start_time = ztimer_now(ZTIMER_SEC);
     LOG_INFO("Entering infinite loop\n");
     while (1)
     {
         ztimer_now_t current_time = ztimer_now(ZTIMER_SEC);
 
-        if ((start_time - current_time) > RESET_INTERVAL_SECONDS) {
+        assert(current_time >= start_time);
+
+        if ((current_time - start_time) > RESET_INTERVAL_SECONDS) {
             LOG_INFO("Resetting now with %lu seconds passed\n", (start_time - current_time));
             pm_reboot();
         }
