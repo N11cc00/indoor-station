@@ -48,8 +48,10 @@ typedef struct
     return;
 } */
 
-#define MAXIMUM_TEMPERATURE 60 * 10 // equates to 60 degrees celsius
+#define MAXIMUM_TEMPERATURE 70 * 10 // equates to 70 degrees celsius
 #define MAXIMUM_HUMIDITY 110 * 10   // equtes to 110% humidity
+#define MINIMUM_TEMPERATURE 0 * 10
+#define MINIMUM_HUMIDITY 0 * 10
 
 #define DHT_OK 0
 static void sort_int16_t(int16_t *values, size_t count)
@@ -91,6 +93,8 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
         else if (current_temperature > MAXIMUM_TEMPERATURE || current_humidity > MAXIMUM_HUMIDITY)
         {
             LOG_WARNING("Unusually high DHT values.");
+        } else if (current_temperature < MINIMUM_TEMPERATURE || current_humidity < MINIMUM_HUMIDITY) {
+            LOG_WARNING("Unusually low DHT values.");
         }
         else
         {
