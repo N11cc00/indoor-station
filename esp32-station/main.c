@@ -50,8 +50,8 @@ typedef struct
 
 #define MAXIMUM_TEMPERATURE 70 * 10 // equates to 70 degrees celsius
 #define MAXIMUM_HUMIDITY 110 * 10   // equtes to 110% humidity
-#define MINIMUM_TEMPERATURE 0 * 10
-#define MINIMUM_HUMIDITY 0 * 10
+#define MINIMUM_TEMPERATURE 3 * 10
+#define MINIMUM_HUMIDITY 1 * 10
 
 #define DHT_OK 0
 static void sort_int16_t(int16_t *values, size_t count)
@@ -72,7 +72,7 @@ static void sort_int16_t(int16_t *values, size_t count)
 
 #define DHT_SAMPLE_COUNT 5
 
-void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
+int read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
 {
     int16_t temperatures[DHT_SAMPLE_COUNT];
     int16_t humidities[DHT_SAMPLE_COUNT];
@@ -111,7 +111,7 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
         LOG_ERROR("Failed to collect enough DHT samples after retries\n");
         *temperature = 0;
         *humidity = 0;
-        return;
+        return -1;
     }
 
     sort_int16_t(temperatures, DHT_SAMPLE_COUNT);
@@ -120,7 +120,7 @@ void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
     *temperature = temperatures[DHT_SAMPLE_COUNT / 2];
     *humidity = humidities[DHT_SAMPLE_COUNT / 2];
 
-    return;
+    return 0;
 }
 
 static uint8_t get_digit_count(int32_t value)
@@ -328,7 +328,13 @@ int main(void)
         }
 
         int16_t humidity, temperature;
-        read_dht_value(&dht22_dev, &temperature, &humidity);
+        int ret = read_dht_value(&dht22_dev, &temperature, &humidity);
+
+        if (ret != 0) {
+            LOG_ERROR("Skipping request");
+            ztimer_sleep(ZTIMER_SEC, INTERVAL);
+            continue;
+        }
         LOG_INFO("Humidity: %hd%%, Temperature: %hd°C\n", humidity / 10, temperature / 10);
 
         construct_http_request(temperature, humidity, light_values.lux, light_values.raw, http_request);
