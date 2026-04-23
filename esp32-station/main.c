@@ -52,28 +52,71 @@ typedef struct
 #define MAXIMUM_HUMIDITY 110 * 10   // equtes to 110% humidity
 
 #define DHT_OK 0
+static void sort_int16_t(int16_t *values, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+    {
+        for (size_t j = i + 1; j < count; j++)
+        {
+            if (values[j] < values[i])
+            {
+                int16_t tmp = values[i];
+                values[i] = values[j];
+                values[j] = tmp;
+            }
+        }
+    }
+}
+
+#define DHT_SAMPLE_COUNT 5
+
 void read_dht_value(dht_t *dev, int16_t *temperature, int16_t *humidity)
 {
-    uint8_t retries = 3;
-    int res;
-    do
+    int16_t temperatures[DHT_SAMPLE_COUNT];
+    int16_t humidities[DHT_SAMPLE_COUNT];
+    uint8_t collected = 0;
+    uint8_t attempts = 0;
+
+    while (collected < DHT_SAMPLE_COUNT && attempts < DHT_SAMPLE_COUNT * 2)
     {
-        res = dht_read(dev, temperature, humidity);
+        int16_t current_temperature;
+        int16_t current_humidity;
+        int res = dht_read(dev, &current_temperature, &current_humidity);
+        attempts++;
 
         if (res != DHT_OK)
         {
             LOG_WARNING("DHT read failed: %d\n", res);
         }
-        else if (*temperature > MAXIMUM_TEMPERATURE || *humidity > MAXIMUM_HUMIDITY)
+        else if (current_temperature > MAXIMUM_TEMPERATURE || current_humidity > MAXIMUM_HUMIDITY)
         {
             LOG_WARNING("Unusually high DHT values.");
         }
-        else if (res == DHT_OK)
+        else
         {
-            return; // Successfully read the values
+            temperatures[collected] = current_temperature;
+            humidities[collected] = current_humidity;
+            collected++;
         }
-    } while (retries-- > 0);
-    LOG_ERROR("Failed to read DHT sensor after retries\n");
+
+        ztimer_sleep(ZTIMER_MSEC, 10);
+    }
+
+    if (collected < DHT_SAMPLE_COUNT)
+    {
+        LOG_ERROR("Failed to collect enough DHT samples after retries\n");
+        *temperature = 0;
+        *humidity = 0;
+        return;
+    }
+
+    sort_int16_t(temperatures, DHT_SAMPLE_COUNT);
+    sort_int16_t(humidities, DHT_SAMPLE_COUNT);
+
+    *temperature = temperatures[DHT_SAMPLE_COUNT / 2];
+    *humidity = humidities[DHT_SAMPLE_COUNT / 2];
+
+    return;
 }
 
 static uint8_t get_digit_count(int32_t value)
