@@ -13,7 +13,6 @@ SQLAlchemy
 typing_extensions
 Werkzeug
 streamlit
-extra-streamlit-components
 requests
 plotly
 gunicorn

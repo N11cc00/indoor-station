@@ -5,9 +5,9 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pytz
 import os
+import json
+from pathlib import Path
 from dotenv import load_dotenv
-import extra_streamlit_components as stx
-from itsdangerous import URLSafeSerializer, BadSignature
 
 # Load environment variables
 load_dotenv()
@@ -26,81 +26,149 @@ timezone = pytz.timezone('Europe/Berlin')
 # API Configuration
 API_URL = "http://localhost:6666/sensor"
 API_TOKEN = os.environ.get("API_TOKEN")  # Read API token from .env
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")  # Set in .env file
 
-# Password Configuration
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")  # Default password
-
-# Cookie/session configuration
-AUTH_COOKIE_NAME = "indoor_station_dashboard_auth"
-AUTH_COOKIE_DAYS = int(os.environ.get("DASHBOARD_AUTH_DAYS", "30"))
-AUTH_SECRET = os.environ.get("DASHBOARD_AUTH_SECRET") or API_TOKEN or DASHBOARD_PASSWORD
+SESSION_FILE = Path(".streamlit/sessions.json")
 
 
-def _auth_serializer():
-    """Create serializer used to sign/verify the auth cookie value."""
-    return URLSafeSerializer(AUTH_SECRET or "dev-fallback-secret", salt="indoor-station-auth")
+def _load_sessions():
+    """Load active sessions from file."""
+    if SESSION_FILE.exists():
+        try:
+            with open(SESSION_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
 
 
-def _build_auth_cookie_value():
-    return _auth_serializer().dumps({"authenticated": True})
+def _save_sessions(sessions):
+    """Save sessions to file with restrictive permissions."""
+    SESSION_FILE.parent.mkdir(exist_ok=True)
+    with open(SESSION_FILE, "w") as f:
+        json.dump(sessions, f)
+    # Only owner can read/write (chmod 600)
+    SESSION_FILE.chmod(0o600)
 
 
-def _is_valid_auth_cookie(cookie_value):
-    if not cookie_value:
+def _get_session_token():
+    """Get session token from session_state or URL query params."""
+    # Check session_state first (fastest)
+    if "session_token" in st.session_state:
+        return st.session_state.session_token
+
+    # Check URL query params (survives refresh)
+    query_params = st.query_params
+    if "session_token" in query_params:
+        token = query_params["session_token"]
+        st.session_state.session_token = token
+        return token
+
+    return None
+
+
+def _validate_session():
+    """Check if user has valid session token."""
+    token = _get_session_token()
+    if not token:
         return False
 
-    try:
-        payload = _auth_serializer().loads(cookie_value)
-    except BadSignature:
+    sessions = _load_sessions()
+    if token not in sessions:
         return False
 
-    return payload.get("authenticated") is True
+    # Check if session expired (30 days)
+    created_at = datetime.fromisoformat(sessions[token])
+    if datetime.now() - created_at > timedelta(days=30):
+        # Session expired
+        sessions.pop(token)
+        _save_sessions(sessions)
+        st.session_state.session_token = None
+        return False
 
-def check_password():
-    """Returns True if the user has entered the correct password."""
+    return True
 
-    cookie_manager = stx.CookieManager(key="dashboard_auth_cookie_manager")
 
-    # Initialize session state
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
+def _create_session():
+    """Create new session after password is correct."""
+    import secrets
+    sessions = _load_sessions()
+    token = secrets.token_urlsafe(32)
+    sessions[token] = datetime.now().isoformat()
+    _save_sessions(sessions)
 
-    # Restore auth from cookie after refresh/new session
-    cookie_value = cookie_manager.get(cookie=AUTH_COOKIE_NAME)
-    if not st.session_state.authenticated and _is_valid_auth_cookie(cookie_value):
-        st.session_state.authenticated = True
+    # Store in session_state
+    st.session_state.session_token = token
+    # Also set in URL query params so it persists on refresh
+    st.query_params["session_token"] = token
 
-    # If already authenticated, return True
-    if st.session_state.authenticated:
-        return True
 
-    # Show login form
-    st.title("🔐 Indoor Station Dashboard Login")
-    st.markdown("Please enter the dashboard password to continue.")
+def require_login():
+    """Simple password-based login for self-only access."""
+    if _validate_session():
+        # Already authenticated
+        return
 
-    # Create a form that submits on Enter
-    with st.form(key="login_form"):
-        password = st.text_input("Password", type="password", key="password_input")
-        submit = st.form_submit_button("Login", type="primary")
+    # Not authenticated - show login
+    st.title("🔐 Dashboard Login")
+    st.markdown("Enter password to access the dashboard.")
 
-        if submit:
-            if password == DASHBOARD_PASSWORD:
-                st.session_state.authenticated = True
-                cookie_manager.set(
-                    cookie=AUTH_COOKIE_NAME,
-                    val=_build_auth_cookie_value(),
-                    expires_at=datetime.utcnow() + timedelta(days=AUTH_COOKIE_DAYS)
-                )
-                st.success("✅ Login successful!")
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password")
+    if not DASHBOARD_PASSWORD:
+        st.error("❌ DASHBOARD_PASSWORD not set. Set it in your .env file.")
+        st.stop()
 
-    # Instructions
-    # st.markdown("---")
-    # st.info("💡 Set custom password via `.env` file: `DASHBOARD_PASSWORD=your_password`")
+    # Rate limiting: max 5 attempts per 15 minutes
+    if "login_attempts" not in st.session_state:
+        st.session_state.login_attempts = 0
+        st.session_state.login_time = datetime.now()
 
-    return False
+    # Reset attempts after 15 minutes
+    if datetime.now() - st.session_state.login_time > timedelta(minutes=15):
+        st.session_state.login_attempts = 0
+        st.session_state.login_time = datetime.now()
+
+    if st.session_state.login_attempts >= 5:
+        st.error("❌ Too many failed attempts. Try again in 15 minutes.")
+        st.stop()
+
+    password = st.text_input("Password", type="password", key="dashboard_pass")
+    submit_button = st.button("Login", key="login_btn", use_container_width=True)
+
+    if submit_button and password:
+        if password == DASHBOARD_PASSWORD:
+            st.session_state.login_attempts = 0
+            _create_session()
+            st.rerun()
+        else:
+            st.session_state.login_attempts += 1
+            remaining = 5 - st.session_state.login_attempts
+            st.error(f"❌ Incorrect password ({remaining} attempts left)")
+    elif not submit_button and password:
+        # Allow Enter key to trigger login
+        if password == DASHBOARD_PASSWORD:
+            st.session_state.login_attempts = 0
+            _create_session()
+            st.rerun()
+
+    st.stop()
+
+
+def render_user_controls():
+    """Show logout button."""
+    if st.sidebar.button("🚪 Logout"):
+        sessions = _load_sessions()
+        token = _get_session_token()
+        if token and token in sessions:
+            sessions.pop(token)
+            _save_sessions(sessions)
+        # Clear session
+        st.session_state.session_token = None
+        if "session_token" in st.query_params:
+            del st.query_params["session_token"]
+        st.rerun()
+
+
+require_login()
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def fetch_sensor_data(from_time, to_time):
@@ -134,19 +202,10 @@ def fetch_sensor_data(from_time, to_time):
         st.error(f"Connection error: {str(e)}")
         return pd.DataFrame()
 
-# Check authentication first
-if not check_password():
-    st.stop()  # Stop execution if not authenticated
-
 # Title and header
 st.title("🏠 Indoor Station Dashboard")
 st.markdown("Real-time temperature and humidity monitoring")
-
-if st.sidebar.button("🚪 Logout"):
-    cookie_manager = stx.CookieManager(key="dashboard_auth_cookie_manager")
-    cookie_manager.delete(AUTH_COOKIE_NAME)
-    st.session_state.authenticated = False
-    st.rerun()
+render_user_controls()
 
 st.sidebar.markdown("---")
 
