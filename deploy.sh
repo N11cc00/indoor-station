@@ -24,6 +24,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🔄 Syncing files with rsync..."
 rsync -avz --delete \
     --exclude='.git/' \
+    --exclude='.env' \
+    --exclude='.env.*' \
     --exclude='node_modules/' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
