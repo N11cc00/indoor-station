@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import pytz
 import os
 from dotenv import load_dotenv
+import extra_streamlit_components as stx
+from itsdangerous import URLSafeSerializer, BadSignature
 
 # Load environment variables
 load_dotenv()
@@ -28,38 +30,76 @@ API_TOKEN = os.environ.get("API_TOKEN")  # Read API token from .env
 # Password Configuration
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")  # Default password
 
+# Cookie/session configuration
+AUTH_COOKIE_NAME = "indoor_station_dashboard_auth"
+AUTH_COOKIE_DAYS = int(os.environ.get("DASHBOARD_AUTH_DAYS", "30"))
+AUTH_SECRET = os.environ.get("DASHBOARD_AUTH_SECRET") or API_TOKEN or DASHBOARD_PASSWORD
+
+
+def _auth_serializer():
+    """Create serializer used to sign/verify the auth cookie value."""
+    return URLSafeSerializer(AUTH_SECRET or "dev-fallback-secret", salt="indoor-station-auth")
+
+
+def _build_auth_cookie_value():
+    return _auth_serializer().dumps({"authenticated": True})
+
+
+def _is_valid_auth_cookie(cookie_value):
+    if not cookie_value:
+        return False
+
+    try:
+        payload = _auth_serializer().loads(cookie_value)
+    except BadSignature:
+        return False
+
+    return payload.get("authenticated") is True
+
 def check_password():
     """Returns True if the user has entered the correct password."""
-    
+
+    cookie_manager = stx.CookieManager(key="dashboard_auth_cookie_manager")
+
     # Initialize session state
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
-    
+
+    # Restore auth from cookie after refresh/new session
+    cookie_value = cookie_manager.get(cookie=AUTH_COOKIE_NAME)
+    if not st.session_state.authenticated and _is_valid_auth_cookie(cookie_value):
+        st.session_state.authenticated = True
+
     # If already authenticated, return True
     if st.session_state.authenticated:
         return True
-    
+
     # Show login form
     st.title("🔐 Indoor Station Dashboard Login")
     st.markdown("Please enter the dashboard password to continue.")
-    
+
     # Create a form that submits on Enter
     with st.form(key="login_form"):
         password = st.text_input("Password", type="password", key="password_input")
         submit = st.form_submit_button("Login", type="primary")
-        
+
         if submit:
             if password == DASHBOARD_PASSWORD:
                 st.session_state.authenticated = True
+                cookie_manager.set(
+                    cookie=AUTH_COOKIE_NAME,
+                    val=_build_auth_cookie_value(),
+                    expires_at=datetime.utcnow() + timedelta(days=AUTH_COOKIE_DAYS)
+                )
                 st.success("✅ Login successful!")
                 st.rerun()
             else:
                 st.error("❌ Incorrect password")
-    
+
     # Instructions
     # st.markdown("---")
     # st.info("💡 Set custom password via `.env` file: `DASHBOARD_PASSWORD=your_password`")
-    
+
     return False
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
@@ -74,7 +114,7 @@ def fetch_sensor_data(from_time, to_time):
             'Authorization': f'Bearer {API_TOKEN}'
         }
         response = requests.get(API_URL, params=params, headers=headers, timeout=10)
-        
+
         if response.status_code == 200:
             data = response.json()
             if data:
@@ -103,12 +143,14 @@ st.title("🏠 Indoor Station Dashboard")
 st.markdown("Real-time temperature and humidity monitoring")
 
 if st.sidebar.button("🚪 Logout"):
+    cookie_manager = stx.CookieManager(key="dashboard_auth_cookie_manager")
+    cookie_manager.delete(AUTH_COOKIE_NAME)
     st.session_state.authenticated = False
     st.rerun()
 
 st.sidebar.markdown("---")
 
-# 
+#
 # Sidebar controls
 st.sidebar.header("Settings")
 
@@ -143,7 +185,7 @@ else:  # Custom
     with col2:
         to_date = st.date_input("To Date", now.date())
         to_time_input = st.time_input("To Time", now.time())
-    
+
     from_time = timezone.localize(datetime.combine(from_date, from_time_input))
     to_time = timezone.localize(datetime.combine(to_date, to_time_input))
 
@@ -165,46 +207,46 @@ if df.empty:
 else:
     # Current readings (latest data point)
     latest = df.iloc[-1]
-    
+
     # Metrics row
     col1, col2, col3, col4, col5 = st.columns(5)
-    
+
     with col1:
         st.metric(
             label="🌡️ Current Temperature",
             value=f"{latest['temperature']:.1f}°C",
             delta=f"{latest['temperature'] - df.iloc[-2]['temperature']:.1f}°C" if len(df) > 1 else None
         )
-    
+
     with col2:
         st.metric(
             label="💧 Current Humidity",
             value=f"{latest['humidity']:.1f}%",
             delta=f"{latest['humidity'] - df.iloc[-2]['humidity']:.1f}%" if len(df) > 1 else None
         )
-    
+
     with col3:
         st.metric(
             label="💡 Current Light",
             value=f"{latest['lux']:.0f} lux",
             delta=f"{latest['lux'] - df.iloc[-2]['lux']:.0f}" if len(df) > 1 else None
         )
-    
+
     with col4:
         st.metric(
             label="📊 Data Points",
             value=len(df)
         )
-    
+
     with col5:
         st.metric(
             label="🕒 Last Update",
             value=latest['timestamp'].strftime('%H:%M:%S')
         )
-    
+
     # Charts
     st.markdown("---")
-    
+
     # Temperature Chart
     st.subheader("🌡️ Temperature Over Time")
     fig_temp = go.Figure()
@@ -218,7 +260,7 @@ else:
         fill='tozeroy',
         fillcolor='rgba(255, 107, 107, 0.1)'
     ))
-    
+
     fig_temp.update_layout(
         xaxis_title="Time",
         yaxis_title="Temperature (°C)",
@@ -226,9 +268,9 @@ else:
         height=400,
         showlegend=False
     )
-    
+
     st.plotly_chart(fig_temp, use_container_width=True)
-    
+
     # Humidity Chart
     st.subheader("💧 Humidity Over Time")
     fig_humid = go.Figure()
@@ -242,7 +284,7 @@ else:
         fill='tozeroy',
         fillcolor='rgba(78, 205, 196, 0.1)'
     ))
-    
+
     fig_humid.update_layout(
         xaxis_title="Time",
         yaxis_title="Humidity (%)",
@@ -250,9 +292,9 @@ else:
         height=400,
         showlegend=False
     )
-    
+
     st.plotly_chart(fig_humid, use_container_width=True)
-    
+
     # Light Chart
     st.subheader("💡 Light Over Time")
     fig_light = go.Figure()
@@ -266,7 +308,7 @@ else:
         fill='tozeroy',
         fillcolor='rgba(255, 217, 61, 0.1)'
     ))
-    
+
     fig_light.update_layout(
         xaxis_title="Time",
         yaxis_title="Light (lux)",
@@ -274,7 +316,7 @@ else:
         height=400,
         showlegend=False
     )
-    
+
     st.plotly_chart(fig_light, use_container_width=True)
 
     # Raw Light Chart
@@ -290,7 +332,7 @@ else:
         fill='tozeroy',
         fillcolor='rgba(255, 165, 0, 0.1)'
     ))
-    
+
     fig_raw_light.update_layout(
         xaxis_title="Time",
         yaxis_title="Raw Light Value (ADC)",
@@ -298,13 +340,13 @@ else:
         height=400,
         showlegend=False
     )
-    
+
     st.plotly_chart(fig_raw_light, use_container_width=True)
-    
+
     # Combined Chart
     st.subheader("📈 Combined View")
     fig_combined = go.Figure()
-    
+
     fig_combined.add_trace(go.Scatter(
         x=df['timestamp'],
         y=df['temperature'],
@@ -313,7 +355,7 @@ else:
         line=dict(color='#FF6B6B', width=2),
         yaxis='y'
     ))
-    
+
     fig_combined.add_trace(go.Scatter(
         x=df['timestamp'],
         y=df['humidity'],
@@ -322,7 +364,7 @@ else:
         line=dict(color='#4ECDC4', width=2),
         yaxis='y2'
     ))
-    
+
     fig_combined.update_layout(
         xaxis_title="Time",
         yaxis=dict(title="Temperature (°C)", side='left'),
@@ -331,15 +373,15 @@ else:
         height=400,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    
+
     st.plotly_chart(fig_combined, use_container_width=True)
-    
+
     # Statistics
     st.markdown("---")
     st.subheader("📊 Statistics")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("**Temperature**")
         temp_stats = pd.DataFrame({
@@ -352,7 +394,7 @@ else:
             ]
         })
         st.dataframe(temp_stats, hide_index=True, use_container_width=True)
-    
+
     with col2:
         st.markdown("**Humidity**")
         humid_stats = pd.DataFrame({
@@ -365,7 +407,7 @@ else:
             ]
         })
         st.dataframe(humid_stats, hide_index=True, use_container_width=True)
-    
+
     with col3:
         st.markdown("**Light**")
         light_stats = pd.DataFrame({
@@ -378,7 +420,7 @@ else:
             ]
         })
         st.dataframe(light_stats, hide_index=True, use_container_width=True)
-    
+
     # Raw data table (expandable)
     with st.expander("📋 View Raw Data"):
         st.dataframe(
